@@ -722,6 +722,54 @@ class PushTokenClass(TokenClass):
         return result
 
     @classmethod
+    def _api_endpoint_delete(cls, g, request_data):
+        """ Handle DELETE request to /ttype endpoint, performs delete of token
+
+        :param g: The Flask context
+        :param request_data: Dictionary containing the parameters of the request
+        :type request_data: dict
+        :returns: String with success message or raises an error
+        :rtype: String
+        """
+        # By default we allow polling if the policy is not set.
+        serial = getParam(request_data, "serial", optional=False)
+        timestamp = getParam(request_data, 'timestamp', optional=False)
+        signature = getParam(request_data, 'signature', optional=False)
+        # first check if the timestamp is in the required span
+        cls._check_timestamp_in_range(timestamp, POLL_TIME_WINDOW)
+        # now check the signature
+        # first get the token
+        try:
+            tok: PushTokenClass = get_one_token(serial=serial, tokentype=cls.get_class_type())
+            pubkey_obj = _build_verify_object(tok.get_tokeninfo(PUBLIC_KEY_SMARTPHONE))
+            sign_data = u"{serial}|{timestamp}".format(**request_data)
+            pubkey_obj.verify(b32decode(signature),
+                              sign_data.encode("utf8"),
+                              padding.PKCS1v15(),
+                              hashes.SHA256())
+            
+            challengeobject_list: list[Challenge] = get_challenges(serial=serial)
+            for chal in challengeobject_list:
+                # check if the challenge is active and not already answered
+                _cnt, answered = chal.get_otp_status()
+                if not answered and chal.is_valid():
+                    chal.delete()
+
+            tok.delete_token()
+            result = f"Token {serial} was successfully deleted"
+
+        except (ResourceNotFoundError, ParameterError,
+                InvalidSignature, ConfigAdminError, BinasciiError) as e:
+            # to avoid disclosing information we always fail with an invalid
+            # signature error even if the token with the serial could not be found
+            log.debug('{0!s}'.format(traceback.format_exc()))
+            log.info('The following error occurred during the signature '
+                     'check: "{0!r}"'.format(e))
+            raise privacyIDEAError('Could not verify signature!')
+
+        return result
+
+    @classmethod
     def api_endpoint(cls, request, g):
         """
         This provides a function which is called by the API endpoint
@@ -806,6 +854,8 @@ class PushTokenClass(TokenClass):
             result, details = cls._api_endpoint_post(request.all_data)
         elif request.method == 'GET':
             result = cls._api_endpoint_get(g, request.all_data)
+        elif request.method == 'DELETE':
+            result = cls._api_endpoint_delete(g, request.all_data)
         else:
             raise privacyIDEAError('Method {0!s} not allowed in \'api_endpoint\' '
                                    'for push token.'.format(request.method))

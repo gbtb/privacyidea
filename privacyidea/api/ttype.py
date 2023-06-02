@@ -80,7 +80,7 @@ def before_request():
                         "info": ""})
 
 
-@ttype_blueprint.route('/<ttype>', methods=['POST', 'GET'])
+@ttype_blueprint.route('/<ttype>', methods=['POST', 'GET', 'DELETE'])
 @log_with(log)
 def token(ttype=None):
     """

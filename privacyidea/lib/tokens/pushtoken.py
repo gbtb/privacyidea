@@ -467,6 +467,7 @@ class PushTokenClass(TokenClass):
         sslverify = getParam(params, PUSH_ACTION.SSL_VERIFY, allowed_values=["0", "1"], default="1")
         # Add rollout state the response
         response_detail['rollout_state'] = self.token.rollout_state
+        response_detail['username'] = user.login
 
         extra_data = {"enrollment_credential": self.get_tokeninfo("enrollment_credential")}
         imageurl = params.get("appimageurl")
@@ -561,7 +562,7 @@ class PushTokenClass(TokenClass):
         if all(k in request_data for k in ("fbtoken", "pubkey")):
             log.debug("Do the 2nd step of the enrollment.")
             try:
-                token_obj = get_one_token(serial=serial,
+                token_obj: PushTokenClass = get_one_token(serial=serial,
                                           tokentype="push",
                                           rollout_state=ROLLOUTSTATE.CLIENTWAIT)
                 token_obj.update(request_data)
